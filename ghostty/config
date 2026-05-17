@@ -1,0 +1,18 @@
+theme = "vesper"
+font-size = 16
+window-padding-x = 2,4
+window-padding-y = 2
+split-divider-color = #ff0000
+focus-follows-mouse = true
+
+#keybind = shift+enter=text:\n
+#keybind = ctrl+d=new_split:right
+
+keybind = ctrl+h=goto_split:left
+keybind = ctrl+j=goto_split:bottom
+keybind = ctrl+k=goto_split:top
+keybind = ctrl+l=goto_split:right
+
+#theme = Xcode Light
+theme = Catppuccin Frappe
+#custom-shader = ~/.config/ghostty/shaders/drifting-motes.glsl
