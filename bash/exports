@@ -1,0 +1,4 @@
+# shellcheck shell=bash
+
+# Environment variables go here, e.g.:
+# export EDITOR=nvim

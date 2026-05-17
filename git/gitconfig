@@ -1,0 +1,16 @@
+[user]
+	name = Gnanasekaran Thoppae
+	email = gnana@gnana.net
+
+[init]
+	defaultBranch = main
+
+[pull]
+	rebase = false
+
+[credential "https://github.com"]
+	helper =
+	helper = !gh auth git-credential
+[credential "https://gist.github.com"]
+	helper =
+	helper = !gh auth git-credential
