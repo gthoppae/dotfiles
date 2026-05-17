@@ -1,0 +1,32 @@
+{
+  "name": "pi-data360-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive Data 360 browser and query explorers for pi, using sf-pi as the required Data 360 conduit.",
+  "keywords": [
+    "pi-package",
+    "pi-coding-agent",
+    "salesforce",
+    "data360",
+    "sf-pi"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/data360-browser.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
+    "@earendil-works/pi-tui": ">=0.74.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@earendil-works/pi-tui": "^0.74.0",
+    "@types/node": "^25.7.0",
+    "typescript": "^6.0.3"
+  }
+}
