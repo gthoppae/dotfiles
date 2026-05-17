@@ -1,0 +1,12 @@
+{
+  "name": "pi-extension-html-slide-shot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
