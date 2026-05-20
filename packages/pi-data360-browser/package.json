@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Interactive Data 360 browser and query explorers for pi, using sf-pi as the required Data 360 conduit.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "keywords": [
     "pi-package",
     "pi-coding-agent",

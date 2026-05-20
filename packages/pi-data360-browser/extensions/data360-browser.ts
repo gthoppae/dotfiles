@@ -49,7 +49,7 @@ type QuerySqlResponse = {
 };
 
 const API_VERSION = "66.0";
-const DEFAULT_ORG = "afdc-l3";
+const DEFAULT_ORG = process.env.SF_DATA360_BROWSER_DEFAULT_ORG?.trim() || "default";
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -639,6 +639,7 @@ function createSemanticStrategy(
 		},
 		objectName: (o) => o.developerName,
 		objectDisplayName: (o) => o.label || o.developerName,
+		objectSubtitle: (o) => `${o.vectorDmoDeveloperName} → ${o.chunkDmoDeveloperName} · ${o.dataspace || "default"}`,
 		objectRow: (o, selected, active, width, theme) => {
 			const status = theme.fg("success", pad("ACTIVE", 7));
 			const type = pad(theme.fg("borderAccent", o.searchType || "HYBRID"), 11);
@@ -681,7 +682,7 @@ async function runQueryBuilder(pi: ExtensionAPI, ctx: any, org: string, forceRef
 	const listResult = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} ${entityType} catalog for ${org}…`, () => loadEntityMetadata(pi, org, entityType, forceRefresh));
 	if (!listResult || (listResult as any).error) return ctx.ui.notify(`Could not load ${entityType} catalog: ${(listResult as any)?.error ?? "cancelled"}`, "error");
 	const cacheLine = cacheStatus(`${isDlo ? "DLO" : "DMO"} catalog`, (listResult as any).cached, (listResult as any).loadedAt);
-	ctx.ui.notify(cacheLine, (listResult as any).cached ? "success" : "info");
+	ctx.ui.notify(cacheLine, "info");
 	const objects = ((listResult as { value?: DmoMeta[] }).value ?? []).filter((m) => m.name);
 	if (!objects.length) return ctx.ui.notify(`No ${entityType} records found.`, "warning");
 	const pickedObject = await pickObjectMc(ctx, isDlo ? "Choose DLO" : "Choose DMO", objects, cacheLine);
@@ -689,7 +690,7 @@ async function runQueryBuilder(pi: ExtensionAPI, ctx: any, org: string, forceRef
 	const objectName = pickedObject.name;
 	const queryable = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} queryable fields for ${objectName}…`, () => loadQueryableFields(pi, org, objectName, forceRefresh));
 	if (!queryable || (queryable as any).error) return ctx.ui.notify(`Could not load queryable fields for ${objectName}: ${(queryable as any)?.error ?? "cancelled"}`, "error");
-	ctx.ui.notify(cacheStatus(`${objectName} queryable fields`, (queryable as any).cached, (queryable as any).loadedAt), (queryable as any).cached ? "success" : "info");
+	ctx.ui.notify(cacheStatus(`${objectName} queryable fields`, (queryable as any).cached, (queryable as any).loadedAt), "info");
 	const fields = (queryable as { value?: DmoField[] }).value ?? [];
 	if (!fields.length) return ctx.ui.notify(`${objectName} has no queryable fields from SELECT * LIMIT 0.`, "warning");
 	const picked = await pickFieldsMc(ctx, `Queryable fields · ${objectName}`, fields, queryDefaultFieldNames(fields, 6));
@@ -699,7 +700,7 @@ async function runQueryBuilder(pi: ExtensionAPI, ctx: any, org: string, forceRef
 	const run = await ctx.ui.confirm("Run SQL now?", "The query was copied to the editor. Run it with /ssot/query-sql now?", { timeout: 30_000 });
 	if (!run) return;
 	const result = await runWithLoader(ctx, `Running top-5 query on ${objectName}…`, (signal) => sfApi<Json>(pi, org, "POST", "/ssot/query-sql", { sql }, signal));
-	if (result) await ctx.ui.custom<void>((_tui: any, theme: ThemeLike, _kb: any, done: () => void) => new ResultViewer("Query result", JSON.stringify(result, null, 2), theme, done));
+	if (result) await ctx.ui.custom((_tui: any, theme: ThemeLike, _kb: any, done: () => void) => new ResultViewer("Query result", JSON.stringify(result, null, 2), theme, done));
 }
 
 
@@ -708,7 +709,7 @@ async function runDataGraphWizard(pi: ExtensionAPI, ctx: any, org: string, force
 	if (!metaResult) return;
 	if ((metaResult as any).error) return ctx.ui.notify(`Could not load DMO catalog: ${(metaResult as any).error}`, "error");
 	const catalogCacheLine = cacheStatus("DMO catalog", (metaResult as any).cached, (metaResult as any).loadedAt);
-	ctx.ui.notify(catalogCacheLine, (metaResult as any).cached ? "success" : "info");
+	ctx.ui.notify(catalogCacheLine, "info");
 	const metadata = (metaResult as { value?: DmoMeta[] }).value ?? [];
 	const profileDmos = metadata.filter((m) => (m.category ?? "").toLowerCase() === "profile" && m.name);
 	const allDmos = metadata.filter((m) => m.name);
@@ -719,7 +720,7 @@ async function runDataGraphWizard(pi: ExtensionAPI, ctx: any, org: string, force
 	const primaryName = pickedPrimary.name;
 	const primaryDescribeResult = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} ${primaryName} fields…`, () => loadDmoDescribe(pi, org, primaryName, forceRefresh));
 	if (!primaryDescribeResult || (primaryDescribeResult as any).error) return ctx.ui.notify(`Could not describe ${primaryName}`, "error");
-	ctx.ui.notify(cacheStatus(`${primaryName} fields`, (primaryDescribeResult as any).cached, (primaryDescribeResult as any).loadedAt), (primaryDescribeResult as any).cached ? "success" : "info");
+	ctx.ui.notify(cacheStatus(`${primaryName} fields`, (primaryDescribeResult as any).cached, (primaryDescribeResult as any).loadedAt), "info");
 	const primaryDescribe = (primaryDescribeResult as { value: DmoDescribe }).value;
 	const allPrimaryFields = primaryDescribe.fields ?? [];
 	const primaryFields = mappedFieldsOnly(allPrimaryFields);
@@ -746,7 +747,7 @@ async function runDataGraphWizard(pi: ExtensionAPI, ctx: any, org: string, force
 			const relatedName = pickedRelated.name;
 			const relatedDescribeResult = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} ${relatedName} fields…`, () => loadDmoDescribe(pi, org, relatedName, forceRefresh));
 			if (relatedDescribeResult && !(relatedDescribeResult as any).error) {
-				ctx.ui.notify(cacheStatus(`${relatedName} fields`, (relatedDescribeResult as any).cached, (relatedDescribeResult as any).loadedAt), (relatedDescribeResult as any).cached ? "success" : "info");
+				ctx.ui.notify(cacheStatus(`${relatedName} fields`, (relatedDescribeResult as any).cached, (relatedDescribeResult as any).loadedAt), "info");
 				const relatedDescribe = (relatedDescribeResult as { value: DmoDescribe }).value;
 				const allRelatedFields = relatedDescribe.fields ?? [];
 				const relatedFields = mappedFieldsOnly(allRelatedFields);
@@ -816,13 +817,13 @@ async function runDataGraphWizard(pi: ExtensionAPI, ctx: any, org: string, force
 	if (!create) return;
 	const createResult = await runWithLoader(ctx, `Creating data graph ${String(finalPayload.name ?? apiName)}…`, (signal) => sfApi<Json>(pi, org, "POST", "/ssot/data-graphs", finalPayload, signal));
 	if (!createResult) return;
-	await ctx.ui.custom<void>((_tui: any, theme: ThemeLike, _kb: any, done: () => void) => new ResultViewer("Data Graph create result", JSON.stringify(createResult, null, 2), theme, done));
+	await ctx.ui.custom((_tui: any, theme: ThemeLike, _kb: any, done: () => void) => new ResultViewer("Data Graph create result", JSON.stringify(createResult, null, 2), theme, done));
 
 	const refresh = await ctx.ui.confirm("Build/refresh now?", "Trailhead's Save and Build corresponds to refreshing/building the graph. This can take minutes.");
 	if (refresh) {
 		const name = encodeURIComponent(String(finalPayload.name ?? apiName));
 		const refreshResult = await runWithLoader(ctx, `Refreshing data graph ${name}…`, (signal) => sfApi<Json>(pi, org, "POST", `/ssot/data-graphs/${name}/actions/refresh`, undefined, signal));
-		if (refreshResult) await ctx.ui.custom<void>((_tui: any, theme: ThemeLike, _kb: any, done: () => void) => new ResultViewer("Data Graph refresh result", JSON.stringify(refreshResult, null, 2), theme, done));
+		if (refreshResult) await ctx.ui.custom((_tui: any, theme: ThemeLike, _kb: any, done: () => void) => new ResultViewer("Data Graph refresh result", JSON.stringify(refreshResult, null, 2), theme, done));
 	}
 }
 
@@ -1634,7 +1635,7 @@ class MultiFieldPicker implements Component {
 }
 
 async function pickFieldsMc(ctx: any, title: string, fields: DmoField[], initialNames: string[]): Promise<FieldPickResult> {
-	return ctx.ui.custom<FieldPickResult>((tui: any, theme: ThemeLike, _kb: any, done: (result: FieldPickResult) => void) => {
+	return ctx.ui.custom((tui: any, theme: ThemeLike, _kb: any, done: (result: FieldPickResult) => void) => {
 		return new MultiFieldPicker(title, fields, initialNames, theme, done, () => tui.requestRender());
 	});
 }
@@ -1760,7 +1761,7 @@ class ObjectPicker implements Component {
 }
 
 async function pickObjectMc(ctx: any, title: string, objects: DmoMeta[], cacheLine: string): Promise<ObjectPickResult> {
-	return ctx.ui.custom<ObjectPickResult>((tui: any, theme: ThemeLike, _kb: any, done: (result: ObjectPickResult) => void) => {
+	return ctx.ui.custom((tui: any, theme: ThemeLike, _kb: any, done: (result: ObjectPickResult) => void) => {
 		return new ObjectPicker(title, objects, theme, cacheLine, done, () => tui.requestRender());
 	});
 }
@@ -1773,7 +1774,7 @@ type SpaConstructorArgs<TObject, TField> = {
 	theme: ThemeLike;
 	strategy: SpaStrategy<TObject, TField>;
 	setEditorText: (text: string) => void;
-	notify: (message: string, level?: "info" | "success" | "warning" | "error") => void;
+	notify: (message: string, level?: "info" | "warning" | "error") => void;
 	done: () => void;
 	requestRender: () => void;
 };
@@ -1806,7 +1807,7 @@ class Spa<TObject, TField> implements Component {
 	private readonly theme: ThemeLike;
 	private readonly strategy: SpaStrategy<TObject, TField>;
 	private readonly setEditorText: (text: string) => void;
-	private readonly notify: (message: string, level?: "info" | "success" | "warning" | "error") => void;
+	private readonly notify: (message: string, level?: "info" | "warning" | "error") => void;
 	private readonly done: () => void;
 	private readonly requestRender: () => void;
 
@@ -2247,7 +2248,7 @@ class Spa<TObject, TField> implements Component {
 			this.objects = loaded.value;
 			this.objectCacheLine = cacheStatus(loaded.kindLabel, loaded.cached, loaded.loadedAt);
 			this.status = this.objectCacheLine;
-			this.notify(this.objectCacheLine, loaded.cached ? "success" : "info");
+			this.notify(this.objectCacheLine, "info");
 		} catch (error) {
 			this.status = error instanceof Error ? stripAnsi(error.message) : String(error);
 			this.notify(this.status, "error");
@@ -2282,7 +2283,7 @@ class Spa<TObject, TField> implements Component {
 			this.fields = loaded.value;
 			for (const name of this.strategy.defaultFieldSelections(this.fields)) this.selectedFields.add(name);
 			this.status = cacheStatus(loaded.kindLabel, loaded.cached, loaded.loadedAt);
-			this.notify(this.status, loaded.cached ? "success" : "info");
+			this.notify(this.status, "info");
 		} catch (error) {
 			this.fields = [];
 			this.status = `Load failed: ${extractErrorMessage(error)}`;
@@ -2700,6 +2701,7 @@ function createQueryStrategy(
 		defaultFieldSelections: (fs) => queryDefaultFieldNames(fs, 6),
 		objectName: (o) => o.name ?? "",
 		objectDisplayName: (o) => o.displayName ?? o.name ?? "(unnamed)",
+		objectSubtitle: (o) => [o.entityType, o.category, o.type, o.name].filter(Boolean).join(" · "),
 		objectRow: (o, selected, active, width, theme) => {
 			const status = theme.fg("success", pad("ACTIVE", 7));
 			const type = typeBadge(o.entityType, theme);
@@ -2784,6 +2786,7 @@ function createProfileStrategy(
 		defaultFieldSelections: (fs) => profileDefaultFieldNames(fs),
 		objectName: (o) => o.name ?? "",
 		objectDisplayName: (o) => o.displayName ?? o.name ?? "(unnamed)",
+		objectSubtitle: (o) => `${o.category || "Profile"} · ${o.relationships?.length ?? 0} relationship(s)`,
 		objectRow: (o, selected, active, width, theme) => {
 			const status = theme.fg("success", pad("ACTIVE", 7));
 			const cat = pad(categoryColor(o.category || "Other", theme), 11);
@@ -2837,7 +2840,7 @@ class ResultViewer implements Component {
 }
 
 async function runWithLoader<T>(ctx: any, label: string, work: (signal: AbortSignal) => Promise<T>): Promise<T | null> {
-	return ctx.ui.custom<T | null>((tui: any, theme: any, _kb: any, done: (v: T | null) => void) => {
+	return ctx.ui.custom((tui: any, theme: any, _kb: any, done: (v: T | null) => void) => {
 		const loader = new BorderedLoader(tui, theme, label);
 		loader.onAbort = () => done(null);
 		work(loader.signal).then(done).catch((error) => done({ error: error instanceof Error ? error.message : String(error) } as T));
@@ -2848,7 +2851,10 @@ async function runWithLoader<T>(ctx: any, label: string, work: (signal: AbortSig
 function parseOrgAndRefresh(args: string): { org: string; forceRefresh: boolean } {
 	const parts = args.trim().split(/\s+/).filter(Boolean);
 	const forceRefresh = parts.some((p) => ["refresh", "reload", "force", "--refresh", "--force", "-f"].includes(p.toLowerCase()));
-	const org = parts.find((p) => !["refresh", "reload", "force", "--refresh", "--force", "-f", "default"].includes(p.toLowerCase())) ?? DEFAULT_ORG;
+	const explicitDefault = parts.some((p) => p.toLowerCase() === "default");
+	const org = explicitDefault
+		? "default"
+		: parts.find((p) => !["refresh", "reload", "force", "--refresh", "--force", "-f"].includes(p.toLowerCase())) ?? DEFAULT_ORG;
 	return { org, forceRefresh };
 }
 
@@ -2859,14 +2865,14 @@ export default function data360Browser(pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			if (!ctx.hasUI) return ctx.ui.notify("/d360-browser requires interactive pi TUI mode", "error");
 			const { org, forceRefresh } = parseOrgAndRefresh(args);
-			await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
+			await ctx.ui.custom((tui, theme, _keybindings, done) => {
 				return new D360Browser(
 					pi,
 					org,
 					theme,
 					(text) => ctx.ui.setEditorText(text),
 					() => runDataGraphWizard(pi, ctx, org, forceRefresh),
-					() => done(),
+					() => done(undefined),
 					() => tui.requestRender(),
 				);
 			});
@@ -2892,9 +2898,9 @@ export default function data360Browser(pi: ExtensionAPI) {
 			const loaded = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} Search Index catalog for ${org}…`, () => loadSearchIndexes(pi, org, forceRefresh));
 			if (!loaded || (loaded as any).error) return ctx.ui.notify(`Could not load Search Indexes: ${(loaded as any)?.error ?? "cancelled"}`, "error");
 			const cacheLine = cacheStatus("Search Index catalog", (loaded as any).cached, (loaded as any).loadedAt);
-			ctx.ui.notify(cacheLine, (loaded as any).cached ? "success" : "info");
+			ctx.ui.notify(cacheLine, "info");
 			const objects = (loaded as { value: SearchIndex[] }).value;
-			await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
+			await ctx.ui.custom((tui, theme, _keybindings, done) => {
 				const strategy = createSemanticStrategy(pi, org, { objects, cacheLine });
 				return new Spa<SearchIndex, DmoField>({
 					pi,
@@ -2903,38 +2909,46 @@ export default function data360Browser(pi: ExtensionAPI) {
 					strategy,
 					setEditorText: (text) => ctx.ui.setEditorText(text),
 					notify: (message, level) => ctx.ui.notify(message, level),
-					done: () => done(),
+					done: () => done(undefined),
 					requestRender: () => tui.requestRender(),
 				});
 			});
 		},
 	});
 
+	const queryExplorerHandler = async (args: string, ctx: any, commandName: string) => {
+		if (!ctx.hasUI) return ctx.ui.notify(`${commandName} requires interactive pi TUI mode`, "error");
+		const { org, forceRefresh } = parseOrgAndRefresh(args);
+		const loaded = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} DMO+DLO catalog for ${org}…`, () => loadCombinedQueryCatalog(pi, org, forceRefresh));
+		if (!loaded || (loaded as any).error) return ctx.ui.notify(`Could not load DMO+DLO catalog: ${(loaded as any)?.error ?? "cancelled"}`, "error");
+		const cacheLine = cacheStatus("DMO+DLO catalog", (loaded as any).cached, (loaded as any).loadedAt);
+		ctx.ui.notify(cacheLine, "info");
+		const objects = ((loaded as { value?: DmoMeta[] }).value ?? []);
+		await ctx.ui.custom((tui: any, theme: ThemeLike, _keybindings: any, done: (value?: unknown) => void) => {
+			const strategy = createQueryStrategy(pi, org, { objects, cacheLine }, forceRefresh, () => tui.requestRender());
+			return new Spa<DmoMeta, DmoField>({
+				pi,
+				org,
+				theme,
+				strategy,
+				setEditorText: (text) => ctx.ui.setEditorText(text),
+				notify: (message, level) => ctx.ui.notify(message, level),
+				done: () => done(undefined),
+				requestRender: () => tui.requestRender(),
+			});
+		});
+	};
+
 	pi.registerCommand("d360-query-explorer", {
 		description: "Single-screen Data 360 query explorer with object list, field picker, SQL preview, and results",
 		getArgumentCompletions: (prefix: string) => [DEFAULT_ORG, "default", "refresh", `${DEFAULT_ORG} refresh`].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value })),
-		handler: async (args, ctx) => {
-			if (!ctx.hasUI) return ctx.ui.notify("/d360-query-explorer requires interactive pi TUI mode", "error");
-			const { org, forceRefresh } = parseOrgAndRefresh(args);
-			const loaded = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} DMO+DLO catalog for ${org}…`, () => loadCombinedQueryCatalog(pi, org, forceRefresh));
-			if (!loaded || (loaded as any).error) return ctx.ui.notify(`Could not load DMO+DLO catalog: ${(loaded as any)?.error ?? "cancelled"}`, "error");
-			const cacheLine = cacheStatus("DMO+DLO catalog", (loaded as any).cached, (loaded as any).loadedAt);
-			ctx.ui.notify(cacheLine, (loaded as any).cached ? "success" : "info");
-			const objects = ((loaded as { value?: DmoMeta[] }).value ?? []);
-			await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
-				const strategy = createQueryStrategy(pi, org, { objects, cacheLine }, forceRefresh, () => tui.requestRender());
-				return new Spa<DmoMeta, DmoField>({
-					pi,
-					org,
-					theme,
-					strategy,
-					setEditorText: (text) => ctx.ui.setEditorText(text),
-					notify: (message, level) => ctx.ui.notify(message, level),
-					done: () => done(),
-					requestRender: () => tui.requestRender(),
-				});
-			});
-		},
+		handler: async (args, ctx) => queryExplorerHandler(args, ctx, "/d360-query-explorer"),
+	});
+
+	pi.registerCommand("d360-query-browser", {
+		description: "Alias for /d360-query-explorer",
+		getArgumentCompletions: (prefix: string) => [DEFAULT_ORG, "default", "refresh", `${DEFAULT_ORG} refresh`].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value })),
+		handler: async (args, ctx) => queryExplorerHandler(args, ctx, "/d360-query-browser"),
 	});
 
 	pi.registerCommand("d360-profile-explorer", {
@@ -2946,9 +2960,9 @@ export default function data360Browser(pi: ExtensionAPI) {
 			const loaded = await runWithLoader(ctx, `${forceRefresh ? "Refreshing" : "Loading"} profile metadata for ${org}…`, () => loadProfileMetadata(pi, org, forceRefresh));
 			if (!loaded || (loaded as any).error) return ctx.ui.notify(`Could not load /ssot/profile/metadata: ${(loaded as any)?.error ?? "cancelled"}`, "error");
 			const cacheLine = cacheStatus("Profile metadata", (loaded as any).cached, (loaded as any).loadedAt);
-			ctx.ui.notify(cacheLine, (loaded as any).cached ? "success" : "info");
+			ctx.ui.notify(cacheLine, "info");
 			const objects = ((loaded as { value?: ProfileMeta[] }).value ?? []).filter((m) => m.name);
-			await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
+			await ctx.ui.custom((tui, theme, _keybindings, done) => {
 				const strategy = createProfileStrategy(pi, org, { objects, cacheLine });
 				return new Spa<ProfileMeta, ProfileField>({
 					pi,
@@ -2957,7 +2971,7 @@ export default function data360Browser(pi: ExtensionAPI) {
 					strategy,
 					setEditorText: (text) => ctx.ui.setEditorText(text),
 					notify: (message, level) => ctx.ui.notify(message, level),
-					done: () => done(),
+					done: () => done(undefined),
 					requestRender: () => tui.requestRender(),
 				});
 			});
@@ -2996,7 +3010,7 @@ export default function data360Browser(pi: ExtensionAPI) {
 			}
 			const result = await runWithLoader(ctx, `${method} ${path}`, (signal) => sfApi<Json>(pi, org, method, path, body, signal));
 			if (result === null) return ctx.ui.notify("Cancelled", "info");
-			await ctx.ui.custom<void>((_tui, theme, _kb, done) => new ResultViewer(`${method} ${path}`, JSON.stringify(result, null, 2), theme, done));
+			await ctx.ui.custom((_tui, theme, _kb, done) => new ResultViewer(`${method} ${path}`, JSON.stringify(result, null, 2), theme, () => done(undefined)));
 		},
 	});
 }

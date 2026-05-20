@@ -50,13 +50,15 @@ interface SfData360Modules {
 	resolveApiVersion: (env: unknown, targetOrgInfo?: unknown) => string;
 	resolveExplicitTargetOrg: (targetOrg: string | undefined, env: unknown) => Promise<unknown>;
 	normalizeTargetOrg: (targetOrg: string | undefined, env: unknown) => string | undefined;
-	getCachedSfEnvironment: (cwd: string) => unknown;
-	getSharedSfEnvironment: (exec: unknown, cwd: string) => Promise<unknown>;
-	buildExecFn: (pi: ExtensionAPI, defaultCwd?: string) => unknown;
+	detectEnvironment: (
+		exec: (command: string, args: string[], options?: { timeout?: number; cwd?: string }) => Promise<{ stdout: string; stderr: string; code: number | null }>,
+		cwd: string,
+	) => Promise<unknown>;
 	clearConnectionCache: () => void;
 }
 
 let cachedTransport: Promise<Sfd360Transport> | null = null;
+const envCache = new Map<string, unknown>();
 
 /**
  * Resolve a sf-pi installation directory, in order of preference:
@@ -90,13 +92,12 @@ async function tryLoadModules(sfPiPath: string): Promise<SfData360Modules> {
 	// Dynamic imports — keep this in sf-pi's module root so its own node_modules
 	// (@salesforce/core, jsforce, etc.) resolve correctly when Node walks up
 	// from the imported file's directory.
-	const [conn, req, p, t, env, exec] = await Promise.all([
+	const [conn, req, p, t, env] = await Promise.all([
 		import(url("lib/common/sf-conn/connection.ts")),
 		import(url("lib/common/sf-conn/request.ts")),
 		import(url("extensions/sf-data360/lib/path.ts")),
 		import(url("extensions/sf-data360/lib/target-org.ts")),
-		import(url("lib/common/sf-environment/shared-runtime.ts")),
-		import(url("lib/common/exec-adapter.ts")),
+		import(url("lib/common/sf-environment/detect.ts")),
 	]);
 	return {
 		connFromAlias: conn.connFromAlias,
@@ -105,9 +106,7 @@ async function tryLoadModules(sfPiPath: string): Promise<SfData360Modules> {
 		resolveApiVersion: t.resolveApiVersion,
 		resolveExplicitTargetOrg: t.resolveExplicitTargetOrg,
 		normalizeTargetOrg: t.normalizeTargetOrg,
-		getCachedSfEnvironment: env.getCachedSfEnvironment,
-		getSharedSfEnvironment: env.getSharedSfEnvironment,
-		buildExecFn: exec.buildExecFn,
+		detectEnvironment: env.detectEnvironment,
 		clearConnectionCache: conn.clearConnectionCache,
 	};
 }
@@ -126,6 +125,21 @@ async function tryReadCommit(sfPiPath: string): Promise<string | undefined> {
 	}
 }
 
+function connectionApiVersion(conn: unknown): string | undefined {
+	try {
+		const getApiVersion = (conn as { getApiVersion?: () => string | undefined })?.getApiVersion;
+		const version = typeof getApiVersion === "function" ? getApiVersion.call(conn) : undefined;
+		return version || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function missingApiVersionMessage(targetOrg: string | undefined): string {
+	const orgLabel = targetOrg ? `target org ${targetOrg}` : "the default target org";
+	return `No Salesforce API version available for ${orgLabel}. Verify auth with \`sf org display --target-org <alias> --json\`, pass an explicit alias to /d360-query-explorer, set a Salesforce CLI default org, or set SF_DATA360_BROWSER_DEFAULT_ORG=<alias>.`;
+}
+
 /**
  * Initialize the sf-data360 transport. Lazy and memoized.
  *
@@ -142,15 +156,19 @@ async function initialize(pi: ExtensionAPI): Promise<Sfd360Transport> {
 	const modules = await tryLoadModules(sfPiPath);
 	const sourceCommit = await tryReadCommit(sfPiPath);
 	const cwd = process.cwd();
+	const exec = async (command: string, args: string[], options?: { timeout?: number; cwd?: string }) => {
+		const result = await pi.exec(command, args, { timeout: options?.timeout, cwd: options?.cwd ?? cwd });
+		return { stdout: result.stdout, stderr: result.stderr, code: result.code };
+	};
+	const loadEnv = async (): Promise<unknown> => {
+		const cached = envCache.get(cwd);
+		if (cached) return cached;
+		const env = await modules.detectEnvironment(exec, cwd);
+		envCache.set(cwd, env);
+		return env;
+	};
 	// Warm the env so the first call doesn't pay the discovery cost mid-render.
-	const exec = modules.buildExecFn(pi);
-	const envPromise = (async () => {
-		try {
-			return modules.getCachedSfEnvironment(cwd) ?? (await modules.getSharedSfEnvironment(exec, cwd));
-		} catch {
-			return null;
-		}
-	})();
+	const envPromise = loadEnv().catch(() => null);
 
 	const call: SfApiCall = async <T>(
 		_pi: ExtensionAPI,
@@ -161,12 +179,21 @@ async function initialize(pi: ExtensionAPI): Promise<Sfd360Transport> {
 		signal?: AbortSignal,
 	): Promise<T> => {
 		if (signal?.aborted) throw new Error("sf-data360 call cancelled before request.");
-		const env = (await envPromise) ?? modules.getCachedSfEnvironment(cwd) ?? (await modules.getSharedSfEnvironment(exec, cwd));
-		const targetOrg = modules.normalizeTargetOrg(org && org !== "default" ? org : undefined, env);
-		const targetOrgInfo = await modules.resolveExplicitTargetOrg(targetOrg, env);
-		const apiVersion = modules.resolveApiVersion(env, targetOrgInfo);
-		const url = modules.buildApiPath(apiPath, apiVersion);
+		const env = (await envPromise) ?? (await loadEnv());
+		const requestedOrg = org && org !== "default" ? org : undefined;
+		const targetOrg = modules.normalizeTargetOrg(requestedOrg, env) ?? requestedOrg;
 		const conn = await modules.connFromAlias(targetOrg);
+		const targetOrgInfo = targetOrg ? await modules.resolveExplicitTargetOrg(targetOrg, env).catch(() => undefined) : undefined;
+		const apiVersion = (() => {
+			try {
+				return modules.resolveApiVersion(env, targetOrgInfo);
+			} catch {
+				const fromConnection = connectionApiVersion(conn);
+				if (fromConnection) return fromConnection;
+				throw new Error(missingApiVersionMessage(targetOrg));
+			}
+		})();
+		const url = modules.buildApiPath(apiPath, apiVersion);
 		const reqBody =
 			method === "GET" || method === "DELETE" ? undefined : body;
 		const resp = await modules.connRequest<T>(conn, {
