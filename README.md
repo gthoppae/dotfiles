@@ -35,6 +35,20 @@ dotfiles/
 └── bootstrap.sh      # apt-installs base tools, then runs install.sh
 ```
 
+## Pi packages
+
+The Data 360 browser/query explorer package now lives outside this dotfiles repo:
+
+```text
+https://github.com/gthoppae/pi-data360-browser
+```
+
+Install it in pi with:
+
+```text
+pi install git:github.com/gthoppae/pi-data360-browser
+```
+
 ## Use in a dev container
 
 ```dockerfile
