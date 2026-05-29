@@ -1,0 +1,6 @@
+# ~/.zshrc — managed by dotfiles repo, symlinked into place by install.sh.
+
+eval "$(mise activate zsh)"
+
+# repo-managed fragments
+source "$HOME/dotfiles/zsh/prompt.zsh"
