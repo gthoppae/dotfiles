@@ -12,8 +12,11 @@ HISTCONTROL=ignoredups:ignorespace
 shopt -s histappend
 
 # for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
-HISTSIZE=1000
-HISTFILESIZE=2000
+HISTSIZE=50000
+HISTFILESIZE=50000
+# persist history to the host-mounted ~/.history dir so it survives restarts
+mkdir -p "$HOME/.history"
+HISTFILE="$HOME/.history/bash_history"
 
 # check the window size after each command and, if necessary,
 # update the values of LINES and COLUMNS.
