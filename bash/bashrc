@@ -58,6 +58,9 @@ export PATH="$HOME/.grok/bin:$PATH"
 # opencode
 export PATH="$HOME/.opencode/bin:$PATH"
 
+# zoxide (smarter cd: `z <dir>`, `zi` interactive)
+command -v zoxide >/dev/null && eval "$(zoxide init bash)"
+
 # repo-managed fragments
 source "$HOME/dotfiles/bash/aliases"
 source "$HOME/dotfiles/bash/prompt"

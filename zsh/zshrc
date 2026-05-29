@@ -10,5 +10,8 @@ SAVEHIST=50000
 setopt APPEND_HISTORY INC_APPEND_HISTORY SHARE_HISTORY \
        HIST_IGNORE_DUPS HIST_IGNORE_SPACE HIST_REDUCE_BLANKS
 
+# zoxide (smarter cd: `z <dir>`, `zi` interactive)
+command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
+
 # repo-managed fragments
 source "$HOME/dotfiles/zsh/prompt.zsh"
